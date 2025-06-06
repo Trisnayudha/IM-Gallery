@@ -1,91 +1,271 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Upload Foto</title>
-    <!-- Dropzone CSS via CDN tanpa integrity/crossorigin -->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.css"
-    />
-    <style>
-      .dz-message {
-        text-align: center;
-        font-size: 1.2em;
-        color: #555;
-      }
-      #upload-area {
-        margin: 50px auto;
-        width: 80%;
-        max-width: 700px;
-        border: 2px dashed #007bff;
-        padding: 30px;
-        border-radius: 10px;
-        background-color: #f9f9f9;
-      }
-    </style>
-  </head>
-  <body>
-    <h2 style="text-align: center; margin-top: 20px">
-      Upload Foto (Original, Medium &amp; Low akan otomatis dibuat)
-    </h2>
 
-    <!-- Ganti div menjadi form agar Dropzone otomatis bind -->
-    <form
-      id="upload-area"
-      class="dropzone"
-      action="/upload"
-      method="post"
-      enctype="multipart/form-data"
-    >
-      <div class="dz-message">
-        Klik atau tarik file di sini untuk mengunggah
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload Foto</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" />
+
+  <!-- Dropzone CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.css" />
+
+  <style>
+    body {
+      background-color: #f4f6f9;
+    }
+
+    .upload-card {
+      max-width: 800px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .upload-header {
+      background-color: #007bff;
+      color: white;
+      padding: 12px 24px;
+      font-size: 1.25rem;
+      font-weight: 500;
+      text-align: center;
+    }
+
+    .folder-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      background-color: #fafafa;
+      transition: background-color 0.2s;
+      cursor: pointer;
+    }
+
+    .folder-card:hover {
+      background-color: #e9ecef;
+    }
+
+    #upload-area {
+      border: 2px dashed #007bff;
+      border-radius: 6px;
+      padding: 40px;
+      background-color: #fafafa;
+    }
+
+    .dz-message {
+      text-align: center;
+      color: #6c757d;
+    }
+  </style>
+</head>
+
+<body>
+  <h2 class="text-center fw-semibold mt-4">Upload Foto (Original, Medium & Low akan otomatis dibuat)</h2>
+
+  <div class="upload-card">
+    <div class="upload-header">Pengelolaan Folder & Upload</div>
+
+    <div class="card-body m-3">
+      <div class="d-flex align-items-center mb-3">
+        <div class="dropdown me-3">
+          <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="folderDropdown"
+            data-bs-toggle="dropdown">
+            Pilih Folder
+          </button>
+          <ul class="dropdown-menu" id="folder-dropdown-menu"></ul>
+        </div>
+
+        <span id="selected-folder-badge" class="badge bg-secondary me-auto">Belum ada folder</span>
+
+        <button class="btn btn-primary" id="btn-open-create-folder">
+          <i class="bi bi-plus-lg"></i> Buat Folder
+        </button>
       </div>
-    </form>
 
-    <!-- Dropzone JS via CDN tanpa integrity/crossorigin -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.js"></script>
+      <div class="row gy-3" id="folder-card-row"></div>
 
-    <script>
-      // Matikan autoDiscover agar kita inisialisasi Dropzone secara manual
-      Dropzone.autoDiscover = false;
+      <form id="upload-area" class="dropzone" action="/upload">
+        <div class="dz-message">
+          <i class="bi bi-upload" style="font-size: 2rem;"></i>
+          <p>Klik atau tarik file di sini untuk mengunggah (maks 30 MB)</p>
+        </div>
+      </form>
+      <!-- Daftar Gambar di Folder -->
+      <h4 class="mt-4">Gambar di Folder: <span id="current-folder-name">-</span></h4>
+      <div class="row gy-3" id="image-list"></div>
+    </div>
+  </div>
 
-      // Inisialisasi Dropzone pada elemen dengan id="upload-area"
-      const uploadArea = new Dropzone("#upload-area", {
-        paramName: "file",
-        maxFilesize: 30, // Maks 30 MB per file
-        acceptedFiles: "image/*",
-        uploadMultiple: false, // Satu file per request
-        parallelUploads: 2,
-        addRemoveLinks: true,
-        init: function () {
-          console.log("Dropzone berhasil diinisialisasi");
-          this.on("sending", function (file, xhr, formData) {
-            // Kalau nanti perlu CSRF, bisa ditambahkan di sini
-            // formData.append("csrf_token", "TOKEN_ANDA");
-          });
-          this.on("success", function (file, data) {
-            console.log("Server merespons:", data);
-            if (data.status === "done") {
-              const links = document.createElement("div");
-              links.style.marginTop = "10px";
-              links.innerHTML = `
-              <small>Original: <a href="${data.url_original}" target="_blank">Lihat</a></small><br>
-              <small>Medium: <a href="${data.url_medium}" target="_blank">Lihat</a></small><br>
-              <small>Low: <a href="${data.url_low}" target="_blank">Lihat</a></small>
-            `;
-              file.previewElement.appendChild(links);
-            }
-          });
-          this.on("error", function (file, errMsg) {
-            console.error("Upload error:", errMsg);
-            const errDiv = document.createElement("div");
-            errDiv.style.color = "red";
-            errDiv.innerText = "Upload gagal: " + errMsg;
-            file.previewElement.appendChild(errDiv);
-          });
-        },
+  <!-- Modal Buat Folder -->
+  <div class="modal fade" id="createFolderModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Buat Folder Baru</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input id="new-folder-input" class="form-control" placeholder="Masukkan nama folder" />
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button class="btn btn-primary" id="btn-create-folder-modal">Buat</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    Dropzone.autoDiscover = false;
+
+    let folderList = [];
+    let currentFolder = "";
+
+    function renderFolders() {
+      document.getElementById("folder-dropdown-menu").innerHTML = "";
+      document.getElementById("folder-card-row").innerHTML = "";
+
+      folderList.forEach(folder => {
+        const dropdownItem = document.createElement("a");
+        dropdownItem.className = "dropdown-item";
+        dropdownItem.textContent = folder;
+        dropdownItem.onclick = () => selectFolder(folder);
+        document.getElementById("folder-dropdown-menu").append(dropdownItem);
+
+        const col = document.createElement("div");
+        col.className = "col-6 col-sm-4 col-md-3";
+        col.innerHTML = `<div class="folder-card p-3 text-center"><i class="bi bi-folder-fill fs-2"></i><div>${folder}</div></div>`;
+        col.onclick = () => selectFolder(folder);
+        document.getElementById("folder-card-row").append(col);
       });
-    </script>
-  </body>
+    }
+
+    // Fetch dan tampilkan gambar pada folder terpilih
+    function loadImages(folder) {
+      document.getElementById("current-folder-name").textContent = folder;
+      fetch(`/images?folder=${encodeURIComponent(folder)}`)
+        .then(res => res.json())
+        .then(images => {
+          const imageList = document.getElementById("image-list");
+          imageList.innerHTML = "";
+          images.forEach(img => {
+            const col = document.createElement("div");
+            col.className = "col-6 col-sm-4 col-md-3";
+            col.innerHTML = `
+              <div class="card">
+                <img src="${img.low_key}" class="card-img-top" alt="Thumbnail">
+                <div class="card-body p-2">
+                  <div class="d-flex justify-content-between mb-2">
+                    <button data-id="${img.id}" class="btn btn-sm btn-danger btn-delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                    <div class="btn-group btn-group-sm">
+                      <button data-url="${img.original_key}" class="btn btn-outline-primary btn-view" title="Original">
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                      </button>
+                      <button data-url="${img.medium_key}" class="btn btn-outline-secondary btn-view" title="Medium">
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                      </button>
+                      <button data-url="${img.low_key}" class="btn btn-outline-info btn-view" title="Low">
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+            // Event listener untuk tombol hapus
+            col.querySelector(".btn-delete").onclick = e => {
+              const id = e.target.getAttribute("data-id");
+              fetch(`/image/${id}`, { method: "DELETE" })
+                .then(res => {
+                  if (res.ok) {
+                    loadImages(folder);
+                  } else {
+                    alert("Gagal menghapus gambar.");
+                  }
+                });
+            };
+            // Event listener untuk tombol view
+            col.querySelectorAll(".btn-view").forEach(btn => {
+              btn.onclick = e => {
+                const url = e.target.getAttribute("data-url");
+                window.open(url, "_blank");
+              };
+            });
+            imageList.append(col);
+          });
+        });
+    }
+
+    // When a folder is selected, enable the Dropzone
+    function selectFolder(folder) {
+      currentFolder = folder;
+      const badge = document.getElementById("selected-folder-badge");
+      badge.textContent = folder;
+      badge.className = "badge bg-success me-auto";
+      loadImages(folder);
+      myDropzone.enable();
+    }
+
+    fetch("/folders").then(res => res.json()).then(folders => {
+      folderList = folders;
+      renderFolders();
+    });
+
+    document.getElementById("btn-open-create-folder").onclick = () => {
+      new bootstrap.Modal(document.getElementById("createFolderModal")).show();
+    };
+
+    document.getElementById("btn-create-folder-modal").onclick = () => {
+      const name = document.getElementById("new-folder-input").value.trim();
+      if (!name) return alert("Nama folder kosong!");
+
+      fetch("/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: name })
+      }).then(() => {
+        if (!folderList.includes(name)) folderList.push(name);
+        renderFolders();
+        selectFolder(name);
+        bootstrap.Modal.getInstance(document.getElementById("createFolderModal")).hide();
+      }).catch(err => alert(err.message));
+    };
+
+    // Initialize Dropzone and keep a reference
+    const myDropzone = new Dropzone("#upload-area", {
+      maxFilesize: 30,
+      acceptedFiles: "image/*",
+      autoProcessQueue: true,
+      init() {
+        this.on("sending", (file, xhr, formData) => {
+          if (currentFolder) {
+            formData.append("folder", currentFolder);
+          }
+        });
+      }
+    });
+
+    // Disable uploads until a folder is selected
+    myDropzone.disable();
+
+    // Prevent opening file dialog if no folder is selected
+    document.getElementById("upload-area").addEventListener("click", (e) => {
+      if (!currentFolder) {
+        e.preventDefault();
+        alert("Pilih folder terlebih dahulu!");
+      }
+    });
+  </script>
+</body>
+
 </html>

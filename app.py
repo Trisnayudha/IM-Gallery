@@ -1,9 +1,12 @@
+CONTABO_BASE_FOLDER = "gallery"
 import os
 import uuid
+from datetime import datetime
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 from config import Config
 from models import db, Photo
+from models import Folder
 from celery_worker import celery
 from tasks import process_and_upload
 import traceback
@@ -18,16 +21,19 @@ def mirror_to_contabo(local_path: str, subfolder: str, filename: str):
     subfolder: the Contabo remote subfolder (e.g., "original", "watermark/medium", "watermark/low").
     filename: name of the file (e.g., "abc123.jpg").
     """
-    remote_path = f"{os.getenv('CONTABO_BUCKET')}/{subfolder}/{filename}"
+    bucket = os.getenv("CONTABO_BUCKET", "indonesiaminer")
+    base_folder = CONTABO_BASE_FOLDER
+    # Construct key as <bucket>/<base_folder>/<subfolder>/<filename>
+    remote_key = f"{bucket}/{base_folder}/{subfolder}/{filename}"
     # Execute rclone copyto: local file to remote bucket
     subprocess.run(
-        ["rclone", "copyto", local_path, f"contabo:{remote_path}"],
+        ["rclone", "copyto", local_path, f"contabo:{remote_key}"],
         check=True
     )
 
 import boto3
 from botocore.client import Config as BotoConfig
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageOps
 
 # Initialize S3 client for Contabo
 s3_client = boto3.client(
@@ -41,7 +47,8 @@ s3_client = boto3.client(
 
 # Function to add watermark and resize
 def add_watermark(input_path: str, output_path: str, max_width: int, quality: int):
-    img = Image.open(input_path).convert("RGBA")
+    img = Image.open(input_path)
+    img = ImageOps.exif_transpose(img).convert("RGBA")
     ratio = max_width / float(img.size[0])
     new_h = int(img.size[1] * ratio)
     img = img.resize((max_width, new_h), Image.LANCZOS)
@@ -101,48 +108,73 @@ def upload():
         if not (file and allowed_file(file.filename)):
             return jsonify({"error": "Invalid file"}), 400
 
+        # Retrieve dynamic folder from frontend
+        folder = request.form.get("folder", "").strip()
+        if not folder:
+            return jsonify({"error": "Folder name is required"}), 400
+
+        # Find or create Folder in database
+        existing_folder = Folder.query.filter_by(path=folder).first()
+        if existing_folder is None:
+            new_folder = Folder(path=folder)
+            db.session.add(new_folder)
+            db.session.commit()
+            folder_obj = new_folder
+        else:
+            folder_obj = existing_folder
+
         ext = file.filename.rsplit(".", 1)[1].lower()
         unique_name = f"{uuid.uuid4().hex}.{ext}"
 
+        # Use folder from frontend (or fallback)
+        dynamic_orig_folder = os.path.join(ORIGINAL_FOLDER, folder)
+        os.makedirs(dynamic_orig_folder, exist_ok=True)
+        local_orig = os.path.join(dynamic_orig_folder, secure_filename(unique_name))
+
         # 1) Simpan file original ke MOUNT_POINT/original/
-        local_orig = os.path.join(ORIGINAL_FOLDER, secure_filename(unique_name))
         file.save(local_orig)
 
         # Mirror original to Contabo via rclone
-        mirror_to_contabo(local_orig, "original", unique_name)
+        mirror_to_contabo(local_orig, f"original/{folder}", unique_name)
 
         # Simpan metadata di DB (tetap sama)
         photo = Photo(uuid=unique_name)
+        photo.folder_id = folder_obj.id
         db.session.add(photo)
         db.session.commit()
 
         # 2) Buat versi medium & watermark
         med_name = f"medium_{unique_name}"
-        local_med = os.path.join(MEDIUM_FOLDER, med_name)
+        dynamic_med_folder = os.path.join(MEDIUM_FOLDER, folder)
+        os.makedirs(dynamic_med_folder, exist_ok=True)
+        local_med = os.path.join(dynamic_med_folder, med_name)
         add_watermark(local_orig, local_med, max_width=1920, quality=75)
 
         # Mirror medium version to Contabo
-        mirror_to_contabo(local_med, "watermark/medium", med_name)
+        mirror_to_contabo(local_med, f"watermark/medium/{folder}", med_name)
 
         # 3) Buat versi low & watermark
         low_name = f"low_{unique_name}"
-        local_low = os.path.join(LOW_FOLDER, low_name)
+        dynamic_low_folder = os.path.join(LOW_FOLDER, folder)
+        os.makedirs(dynamic_low_folder, exist_ok=True)
+        local_low = os.path.join(dynamic_low_folder, low_name)
         add_watermark(local_orig, local_low, max_width=800, quality=60)
 
         # Mirror low version to Contabo
-        mirror_to_contabo(local_low, "watermark/low", low_name)
+        mirror_to_contabo(local_low, f"watermark/low/{folder}", low_name)
 
         # Simpan path ke DB (sesuaikan URL-nya nanti)
-        photo.original_key = f"original/{unique_name}"
-        photo.medium_key   = f"watermark/medium/{med_name}"
-        photo.low_key      = f"watermark/low/{low_name}"
+        photo.original_key = f"{CONTABO_BASE_FOLDER}/original/{folder}/{unique_name}"
+        photo.medium_key   = f"{CONTABO_BASE_FOLDER}/watermark/medium/{folder}/{med_name}"
+        photo.low_key      = f"{CONTABO_BASE_FOLDER}/watermark/low/{folder}/{low_name}"
         db.session.commit()
 
         # (Opsional) Hapus file lokal temp dari folder lain, tapi karena
         # kita langsung nulis ke bucket via rclone mount, hapus sini tidak perlu.
 
         # 4) Bangun URL publik:
-        base_url = f"{os.getenv('CONTABO_ENDPOINT')}"
+        bucket = os.getenv("CONTABO_BUCKET", "indonesiaminer")
+        base_url = f"{os.getenv('CONTABO_ENDPOINT')}/{bucket}"
         return jsonify({
             "uuid": unique_name,
             "status": "done",
@@ -156,6 +188,7 @@ def upload():
         current_app.logger.error("Upload gagal: %s", e)
         return jsonify({"error": "Processing failed", "detail": str(e)}), 500
     
+
 @app.route("/status/<int:photo_id>", methods=["GET"])
 def status(photo_id):
     """
@@ -172,6 +205,97 @@ def status(photo_id):
         "url_medium": photo.url_medium,
         "url_low": photo.url_low
     }), 200
+
+
+
+# --- Folders list endpoint
+@app.route("/folders", methods=["GET"])
+def get_folders():
+    """
+    Mengembalikan daftar folder yang tersimpan di tabel Folder sebagai array JSON.
+    """
+    folder_objs = Folder.query.order_by(Folder.created_at.desc()).all()
+    paths = [f.path for f in folder_objs]
+    return jsonify(paths), 200
+
+# --- Create folder endpoint
+@app.route("/folders", methods=["POST"])
+def create_folder():
+    """
+    Terima JSON dengan field 'path' untuk menyimpan folder baru ke database.
+    """
+    data = request.get_json()
+    if not data or "path" not in data or not data["path"].strip():
+        return jsonify({"error": "Field 'path' is required"}), 400
+
+    folder_path = data["path"].strip()
+    # Cek apakah folder sudah ada
+    existing = Folder.query.filter_by(path=folder_path).first()
+    if existing:
+        return jsonify({"message": "Folder already exists", "path": existing.path}), 200
+
+    # Simpan folder baru
+    new_folder = Folder(path=folder_path)
+    db.session.add(new_folder)
+    db.session.commit()
+
+    return jsonify({"message": "Folder created", "path": new_folder.path}), 201
+
+# --- List images in a folder endpoint
+@app.route("/images", methods=["GET"])
+def get_images():
+    """
+    Mengembalikan daftar gambar dalam folder tertentu dengan URL original, medium, dan low.
+    """
+    folder = request.args.get("folder", "").strip()
+    if not folder:
+        return jsonify([]), 200
+
+    # Cari folder berdasarkan path
+    folder_obj = Folder.query.filter_by(path=folder).first()
+    if not folder_obj:
+        return jsonify([]), 200
+
+    # Ambil semua foto terkait folder tersebut
+    photos = Photo.query.filter_by(folder_id=folder_obj.id).all()
+
+    # Bangun base URL untuk konten S3/Contabo
+    bucket = os.getenv("CONTABO_BUCKET", "indonesiaminer")
+    base_url = f"{os.getenv('CONTABO_ENDPOINT')}/"
+
+    result = []
+    for p in photos:
+        result.append({
+            "id": p.id,
+            "original_key": f"{base_url}/{p.original_key}",
+            "medium_key": f"{base_url}/{p.medium_key}",
+            "low_key": f"{base_url}/{p.low_key}"
+        })
+    return jsonify(result), 200
+
+# --- Delete single image endpoint
+@app.route("/image/<int:photo_id>", methods=["DELETE"])
+def delete_image(photo_id):
+    """
+    Menghapus satu foto baik dari database maupun bucket S3/Contabo.
+    """
+    photo = Photo.query.get(photo_id)
+    if not photo:
+        return jsonify({"error": "Not found"}), 404
+
+    # Coba hapus objek dari Contabo/S3 (opsional jika bucket terisi)
+    try:
+        bucket = os.getenv("CONTABO_BUCKET", "indonesiaminer")
+        s3_client.delete_object(Bucket=bucket, Key=photo.original_key)
+        s3_client.delete_object(Bucket=bucket, Key=photo.medium_key)
+        s3_client.delete_object(Bucket=bucket, Key=photo.low_key)
+    except Exception as e:
+        current_app.logger.error("Gagal menghapus dari Contabo: %s", e)
+
+    # Hapus dari database
+    db.session.delete(photo)
+    db.session.commit()
+    return jsonify({"message": "Deleted"}), 200
 
 if __name__ == "__main__":
     # Jalankan Flask
