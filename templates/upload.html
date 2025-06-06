@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Upload Foto</title>
+    <!-- Dropzone CSS via CDN tanpa integrity/crossorigin -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.css"
+    />
+    <style>
+      .dz-message {
+        text-align: center;
+        font-size: 1.2em;
+        color: #555;
+      }
+      #upload-area {
+        margin: 50px auto;
+        width: 80%;
+        max-width: 700px;
+        border: 2px dashed #007bff;
+        padding: 30px;
+        border-radius: 10px;
+        background-color: #f9f9f9;
+      }
+    </style>
+  </head>
+  <body>
+    <h2 style="text-align: center; margin-top: 20px">
+      Upload Foto (Original, Medium &amp; Low akan otomatis dibuat)
+    </h2>
+
+    <!-- Ganti div menjadi form agar Dropzone otomatis bind -->
+    <form
+      id="upload-area"
+      class="dropzone"
+      action="/upload"
+      method="post"
+      enctype="multipart/form-data"
+    >
+      <div class="dz-message">
+        Klik atau tarik file di sini untuk mengunggah
+      </div>
+    </form>
+
+    <!-- Dropzone JS via CDN tanpa integrity/crossorigin -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.js"></script>
+
+    <script>
+      // Matikan autoDiscover agar kita inisialisasi Dropzone secara manual
+      Dropzone.autoDiscover = false;
+
+      // Inisialisasi Dropzone pada elemen dengan id="upload-area"
+      const uploadArea = new Dropzone("#upload-area", {
+        paramName: "file",
+        maxFilesize: 30, // Maks 30 MB per file
+        acceptedFiles: "image/*",
+        uploadMultiple: false, // Satu file per request
+        parallelUploads: 2,
+        addRemoveLinks: true,
+        init: function () {
+          console.log("Dropzone berhasil diinisialisasi");
+          this.on("sending", function (file, xhr, formData) {
+            // Kalau nanti perlu CSRF, bisa ditambahkan di sini
+            // formData.append("csrf_token", "TOKEN_ANDA");
+          });
+          this.on("success", function (file, data) {
+            console.log("Server merespons:", data);
+            if (data.status === "done") {
+              const links = document.createElement("div");
+              links.style.marginTop = "10px";
+              links.innerHTML = `
+              <small>Original: <a href="${data.url_original}" target="_blank">Lihat</a></small><br>
+              <small>Medium: <a href="${data.url_medium}" target="_blank">Lihat</a></small><br>
+              <small>Low: <a href="${data.url_low}" target="_blank">Lihat</a></small>
+            `;
+              file.previewElement.appendChild(links);
+            }
+          });
+          this.on("error", function (file, errMsg) {
+            console.error("Upload error:", errMsg);
+            const errDiv = document.createElement("div");
+            errDiv.style.color = "red";
+            errDiv.innerText = "Upload gagal: " + errMsg;
+            file.previewElement.appendChild(errDiv);
+          });
+        },
+      });
+    </script>
+  </body>
+</html>

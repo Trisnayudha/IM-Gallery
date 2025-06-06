@@ -1,0 +1,23 @@
+# Node modules (jika nantinya ada frontend)
+node_modules/
+
+# Virtual environment
+venv/
+*.pyc
+__pycache__/
+
+# Database SQLite
+digital_card.db
+
+# File konfigurasi dengan kredensial (jika Anda pakai file .env)
+.env
+config.py
+
+# Log dan file runtime
+*.log
+
+# File IDE/editor (opsional)
+.vscode/
+*.sublime-project
+*.sublime-workspace
+uploads/
