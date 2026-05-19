@@ -184,7 +184,7 @@
             `;
             // Event listener untuk tombol hapus
             col.querySelector(".btn-delete").onclick = e => {
-              const id = e.target.getAttribute("data-id");
+              const id = e.currentTarget.getAttribute("data-id");
               fetch(`/image/${id}`, { method: "DELETE" })
                 .then(res => {
                   if (res.ok) {
@@ -197,7 +197,7 @@
             // Event listener untuk tombol view
             col.querySelectorAll(".btn-view").forEach(btn => {
               btn.onclick = e => {
-                const url = e.target.getAttribute("data-url");
+                const url = e.currentTarget.getAttribute("data-url");
                 window.open(url, "_blank");
               };
             });
