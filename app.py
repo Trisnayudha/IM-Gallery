@@ -55,7 +55,7 @@ def add_watermark(input_path: str, output_path: str, max_width: int, quality: in
 
     watermark = Image.open(os.path.join(os.getcwd(), "static", "watermark-2026-v2.png")).convert("RGBA")
     print(f"Adding watermark: img size={img.size}, watermark size (before resize)={watermark.size}")
-    wm_ratio = 0.15
+    wm_ratio = 0.35
     wm_w = int(img.size[0] * wm_ratio)
     wm_h = int((wm_w / watermark.size[0]) * watermark.size[1])
     watermark = watermark.resize((wm_w, wm_h), Image.LANCZOS)
